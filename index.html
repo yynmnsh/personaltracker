@@ -164,9 +164,9 @@
               
               <div class="flex items-center gap-4 mb-6">
                  <div id="note-modal-icon" class="w-16 h-16 rounded-[1.25rem] flex items-center justify-center text-3xl shadow-sm border border-slate-100"></div>
-                 <div>
+                 <div class="flex-1">
                     <h3 class="font-extrabold text-2xl text-slate-800 tracking-tight mb-1" id="note-modal-title">Log Activity</h3>
-                    <p class="text-xs text-slate-400 font-mono font-bold uppercase tracking-widest bg-slate-50 inline-block px-2.5 py-1 rounded-lg border border-slate-100" id="note-modal-time">Just now</p>
+                    <input type="datetime-local" id="note-modal-time" class="text-[11px] text-slate-600 font-mono font-bold uppercase tracking-widest bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all cursor-pointer w-full max-w-[220px] shadow-inner">
                  </div>
               </div>
 
@@ -352,14 +352,14 @@
           <h3 class="font-extrabold text-[15px] text-slate-800 mb-4">Create New Tracker</h3>
           <div class="space-y-5">
             <div class="flex gap-3">
-              <div id="selected-icon-display" class="w-14 h-14 bg-blue-50 border border-blue-200 text-blue-600 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+              <div id="selected-icon-display" class="w-14 h-14 bg-white border border-slate-200 text-blue-500 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
                 <!-- SVG dimuat dinamis -->
               </div>
-              <input type="text" id="new-cat-name" placeholder="Tracker Name..." class="flex-1 w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all text-slate-800 placeholder-slate-400 shadow-sm">
+              <input type="text" id="new-cat-name" placeholder="Tracker Name..." class="flex-1 w-full bg-white border border-slate-200 rounded-2xl px-4 py-4 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all text-slate-800 placeholder-slate-400 shadow-sm">
             </div>
             
             <p class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest mt-2">Choose Icon</p>
-            <div class="grid grid-cols-6 gap-2" id="icon-picker">
+            <div class="grid grid-cols-5 gap-2" id="icon-picker">
               <!-- JS generates icons -->
             </div>
             <input type="hidden" id="selected-icon-val" value="leaf">
@@ -412,7 +412,6 @@
 
   <!-- ==================== LOGIC ==================== -->
   <script type="module">
-    // Update Impor: Kita tambahkan sistem otentikasi Email & Password
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -587,7 +586,6 @@
         document.getElementById('login-text').classList.add('hidden');
         document.getElementById('login-spinner').classList.remove('hidden');
         
-        // Mode Canvas Sandbox By-pass 
         if (isCanvas && !auth) {
             isPreviewMode = true;
             currentUser = { uid: 'canvas-preview-user' };
@@ -597,21 +595,17 @@
 
         try {
             if (isCanvas && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                // Kanvas akan otomatis pakai token ini untuk bypass Sandbox
                 await signInWithCustomToken(auth, __initial_auth_token);
             } else {
-                // Di Hosting Asli, kita pakai Email & Password
                 if (isRegistering) {
                     await createUserWithEmailAndPassword(auth, email, pwd);
                 } else {
                     await signInWithEmailAndPassword(auth, email, pwd);
                 }
             }
-            // Transisi UI akan ditangani otomatis oleh onAuthStateChanged
         } catch (error) {
             console.error("Auth Error:", error);
             
-            // Perbaikan tampilan pesan error
             let errMsg = error.message.replace("Firebase: ", "");
             if(error.code === 'auth/invalid-credential') errMsg = "Email atau Password salah.";
             if(error.code === 'auth/email-already-in-use') errMsg = "Email sudah terdaftar. Silakan Sign In.";
@@ -631,10 +625,18 @@
         location.reload(); 
     });
 
-    // Ini kunci otomatisasinya. Begitu Firebase mendeteksi sesi aktif, dia langsung masuk!
     if(auth) {
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
           if (user) {
+            
+            // JIKA USER TERDETEKSI ANONIM (DARI VERSI SEBELUMNYA), KITA PAKSA LOGOUT
+            // KECUALI JIKA SEDANG PREVIEW DI CANVAS
+            if (user.isAnonymous && !isCanvas) {
+                console.log("Mendeteksi sisa akun anonim lama, memaksa logout untuk beralih ke Email...");
+                await signOut(auth);
+                return;
+            }
+
             if(!isPreviewMode) {
               currentUser = user;
               enterAppUI();
@@ -777,6 +779,11 @@
         return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
     }
 
+    function getLocalDatetimeString(date) {
+        const pad = n => n.toString().padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
     // --- UI: DASHBOARD (CARDS) ---
     function renderCategoriesGrid() {
       const grid = document.getElementById('categories-grid');
@@ -910,12 +917,12 @@
             pendingEditLogId = logToEdit.id;
             document.getElementById('note-modal-title').innerText = "Edit " + category.name;
             document.getElementById('log-note-input').value = logToEdit.note || '';
-            document.getElementById('note-modal-time').innerText = new Date(logToEdit.timestamp).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
+            document.getElementById('note-modal-time').value = getLocalDatetimeString(new Date(logToEdit.timestamp));
         } else {
             pendingEditLogId = null;
             document.getElementById('note-modal-title').innerText = "Log " + category.name;
             document.getElementById('log-note-input').value = '';
-            document.getElementById('note-modal-time').innerText = "Just now";
+            document.getElementById('note-modal-time').value = getLocalDatetimeString(new Date());
         }
 
         const modal = document.getElementById('note-modal');
@@ -953,6 +960,8 @@
         if(!pendingLogCategory) return;
         
         const note = document.getElementById('log-note-input').value.trim();
+        const timeInputVal = document.getElementById('note-modal-time').value;
+        const timestamp = timeInputVal ? new Date(timeInputVal).getTime() : Date.now();
         
         if(navigator.vibrate) navigator.vibrate(50);
         
@@ -963,18 +972,21 @@
 
             if(isPreviewMode) {
                 const idx = logs.findIndex(l => l.id === pendingEditLogId);
-                if(idx > -1) logs[idx].note = note;
+                if(idx > -1) {
+                    logs[idx].note = note;
+                    logs[idx].timestamp = timestamp;
+                }
                 refreshAppUI();
                 return;
             }
 
             try {
-                await updateDoc(doc(db, getPath('logs'), pendingEditLogId), { note: note });
+                await updateDoc(doc(db, getPath('logs'), pendingEditLogId), { note: note, timestamp: timestamp });
             } catch (error) { showToast("Error updating data"); }
 
         } else {
             // -- ADD MODE --
-            const data = { categoryId: pendingLogCategory.id, timestamp: Date.now(), note: note };
+            const data = { categoryId: pendingLogCategory.id, timestamp: timestamp, note: note };
             closeNoteModal();
             showToast("Record saved!");
 
